@@ -355,6 +355,39 @@ export class EmisoresService {
     return this.mapToResponse(result.rows[0]);
   }
 
+  async uploadLogo(
+    idOrRuc: string,
+    fileBuffer: Buffer,
+  ): Promise<EmisorResponseDto> {
+    // Buscar si existe el emisor por ID o por RUC
+    let emisor = await this.findByRuc(idOrRuc);
+    if (!emisor) {
+      try {
+        emisor = await this.findOne(idOrRuc);
+      } catch (e) {
+        throw new NotFoundException(`Emisor con ID o RUC ${idOrRuc} no encontrado`);
+      }
+    }
+
+    const result = await this.db.query(
+      `UPDATE emisores SET
+        logo_bin = $1,
+        updated_at = NOW()
+       WHERE id = $2
+       RETURNING id, ruc, razon_social, nombre_comercial, direccion_matriz,
+                 obligado_contabilidad, contribuyente_especial, agente_retencion,
+                 contribuyente_rimpe, ambiente, estado, tenant_id,
+                 certificado_p12 IS NOT NULL as tiene_certificado,
+                 certificado_valido_hasta, certificado_sujeto,
+                 logo_bin IS NOT NULL as tiene_logo,
+                 created_at, updated_at`,
+      [fileBuffer, emisor.id],
+    );
+
+    this.logger.log(`Logotipo cargado para emisor: ${emisor.id}`);
+    return this.mapToResponse(result.rows[0]);
+  }
+
   async uploadCertificado(
     id: string,
     file: Buffer,
@@ -455,7 +488,7 @@ export class EmisoresService {
     return { validoHasta, sujeto };
   }
 
-  private mapToResponse(row: any): EmisorResponseDto {
+  private mapToResponse(row: any): EmisorResponseDto & { tieneLogo?: boolean } {
     return {
       id: row.id,
       ruc: row.ruc,
@@ -472,6 +505,7 @@ export class EmisoresService {
       tieneCertificado: row.tiene_certificado,
       certificadoValidoHasta: row.certificado_valido_hasta?.toISOString(),
       certificadoSujeto: row.certificado_sujeto,
+      tieneLogo: row.tiene_logo,
       createdAt: row.created_at?.toISOString(),
       updatedAt: row.updated_at?.toISOString(),
     };

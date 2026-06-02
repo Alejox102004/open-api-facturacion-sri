@@ -35,6 +35,7 @@ import { EmisoresService } from '../emisores/emisores.service';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { JwtPayload, UserRole } from '../auth/dto/auth.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { Public } from '../auth/decorators/public.decorator';
 import { ConfigService } from '@nestjs/config';
 import { extractRucFromClaveAcceso } from './utils/clave-acceso.utils';
 import {
@@ -399,10 +400,11 @@ export class SriController {
     return result;
   }
 
+  @Public()
   @Get('comprobantes/:claveAcceso/xml')
   @ApiOperation({
     summary: 'Descargar XML autorizado',
-    description: 'Descarga el XML autorizado del comprobante',
+    description: 'Descarga el XML autorizado del comprobante (Acceso público)',
   })
   @ApiParam({
     name: 'claveAcceso',
@@ -413,10 +415,8 @@ export class SriController {
   async descargarXml(
     @Param('claveAcceso') claveAcceso: string,
     @Res() res: Response,
-    @CurrentUser() user: JwtPayload,
   ): Promise<void> {
     this.logger.log(`GET /sri/comprobantes/${claveAcceso}/xml`);
-    await this.validateClaveAccesoAccess(claveAcceso, user);
     const xml = await this.sriService.obtenerXmlAutorizado(claveAcceso);
     if (!xml) {
       throw new NotFoundException(`XML para ${claveAcceso} no disponible`);
@@ -427,6 +427,35 @@ export class SriController {
       `attachment; filename="${claveAcceso}.xml"`,
     );
     res.send(xml);
+  }
+
+  @Public()
+  @Get('comprobantes/:claveAcceso/pdf')
+  @ApiOperation({
+    summary: 'Descargar RIDE (PDF) autorizado',
+    description: 'Genera y descarga el RIDE en PDF del comprobante (Acceso público)',
+  })
+  @ApiParam({
+    name: 'claveAcceso',
+    description: 'Clave de acceso de 49 dígitos',
+  })
+  @ApiResponse({ status: 200, description: 'PDF RIDE' })
+  @ApiResponse({ status: 404, description: 'Comprobante no encontrado' })
+  async descargarPdf(
+    @Param('claveAcceso') claveAcceso: string,
+    @Res() res: Response,
+  ): Promise<void> {
+    this.logger.log(`GET /sri/comprobantes/${claveAcceso}/pdf`);
+    const pdfBuffer = await this.sriService.obtenerPdfAutorizado(claveAcceso);
+    if (!pdfBuffer) {
+      throw new NotFoundException(`PDF para ${claveAcceso} no disponible`);
+    }
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="${claveAcceso}.pdf"`,
+    );
+    res.send(pdfBuffer);
   }
 
   @Patch('comprobantes/:claveAcceso/anular')

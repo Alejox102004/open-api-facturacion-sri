@@ -56,6 +56,17 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
       this.logger.log(
         '✅ Conexión a la base de datos establecida correctamente',
       );
+
+      // Asegurar existencia de columna logo_bin
+      try {
+        await client.query(`
+          ALTER TABLE emisores ADD COLUMN IF NOT EXISTS logo_bin bytea;
+        `);
+        this.logger.log('✅ Columna logo_bin en tabla emisores verificada/creada correctamente');
+      } catch (schemaError) {
+        this.logger.error('❌ Falló la verificación de la columna logo_bin en la tabla emisores', schemaError);
+      }
+
       client.release();
     } catch (error) {
       // No relanzar — dejar que la app arranque pero con errores claros en cada query

@@ -193,6 +193,8 @@ export interface EmisorRecord {
   certificado_updated_at?: Date;
   ambiente: string;
   estado: string;
+  logo_bin?: Buffer;
+  tiene_logo?: boolean;
 }
 
 export interface PuntoEmisionRecord {

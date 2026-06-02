@@ -15,6 +15,7 @@ import {
 } from './services';
 import { SriRepositoryService } from './services/sri-repository.service';
 import { XmlStorageService } from './services/xml-storage.service';
+import { RideGenerator } from './utils/ride-generator';
 import {
   CreateFacturaDto,
   FacturaResponseDto,
@@ -401,6 +402,57 @@ export class SriService {
     }
     // Read XML content from file
     return this.xmlStorage.readXml(xmlPath);
+  }
+
+  async obtenerPdfAutorizado(claveAcceso: string): Promise<Buffer | null> {
+    const xml = await this.obtenerXmlAutorizado(claveAcceso);
+    if (!xml) {
+      return null;
+    }
+    try {
+      const ruc = extractRucFromClaveAcceso(claveAcceso);
+      const emisor = await this.repository.findEmisorByRuc(ruc);
+      const logoBuffer = emisor?.logo_bin ? Buffer.from(emisor.logo_bin) : undefined;
+
+      let processedXml = xml;
+      if (!xml.includes('<autorizacion>')) {
+        const comprobante = await this.repository.findComprobanteByClaveAcceso(claveAcceso);
+        const numAut = comprobante?.numero_autorizacion || claveAcceso;
+        
+        let fechaAutStr = 'Consultar portal SRI';
+        if (comprobante?.fecha_autorizacion) {
+          try {
+            const dateObj = new Date(comprobante.fecha_autorizacion);
+            if (!isNaN(dateObj.getTime())) {
+              const day = String(dateObj.getDate()).padStart(2, '0');
+              const month = String(dateObj.getMonth() + 1).padStart(2, '0');
+              const year = dateObj.getFullYear();
+              const hours = String(dateObj.getHours()).padStart(2, '0');
+              const minutes = String(dateObj.getMinutes()).padStart(2, '0');
+              const seconds = String(dateObj.getSeconds()).padStart(2, '0');
+              fechaAutStr = `${day}/${month}/${year} ${hours}:${minutes}:${seconds}`;
+            } else {
+              fechaAutStr = String(comprobante.fecha_autorizacion);
+            }
+          } catch (e) {
+            fechaAutStr = String(comprobante.fecha_autorizacion);
+          }
+        }
+
+        processedXml = `<?xml version="1.0" encoding="UTF-8"?>
+<autorizacion>
+  <estado>AUTORIZADO</estado>
+  <numeroAutorizacion>${numAut}</numeroAutorizacion>
+  <fechaAutorizacion>${fechaAutStr}</fechaAutorizacion>
+  <comprobante><![CDATA[${xml}]]></comprobante>
+</autorizacion>`;
+      }
+
+      return await RideGenerator.generateFromXml(processedXml, logoBuffer);
+    } catch (error) {
+      this.logger.error(`Error generando RIDE PDF: ${(error as Error).message}`);
+      return null;
+    }
   }
 
   /**

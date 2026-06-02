@@ -203,7 +203,7 @@ CREATE TABLE public.catalogo_tipos_identificacion (
 --
 
 CREATE TABLE public.comprobante_detalles (
-    id uuid DEFAULT extensions.uuid_generate_v4() NOT NULL,
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
     comprobante_id uuid NOT NULL,
     producto_id uuid,
     codigo_principal character varying(25),
@@ -230,7 +230,7 @@ COMMENT ON TABLE public.comprobante_detalles IS 'Líneas de detalle de comproban
 --
 
 CREATE TABLE public.comprobante_impuestos (
-    id uuid DEFAULT extensions.uuid_generate_v4() NOT NULL,
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
     comprobante_detalle_id uuid NOT NULL,
     codigo character varying(2) NOT NULL,
     codigo_porcentaje character varying(4) NOT NULL,
@@ -252,7 +252,7 @@ COMMENT ON TABLE public.comprobante_impuestos IS 'Impuestos por línea de detall
 --
 
 CREATE TABLE public.comprobante_pagos (
-    id uuid DEFAULT extensions.uuid_generate_v4() NOT NULL,
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
     comprobante_id uuid NOT NULL,
     forma_pago character varying(2) NOT NULL,
     total numeric(18,2) NOT NULL,
@@ -273,7 +273,7 @@ COMMENT ON TABLE public.comprobante_pagos IS 'Formas de pago de comprobantes';
 --
 
 CREATE TABLE public.comprobante_retenciones (
-    id uuid DEFAULT extensions.uuid_generate_v4() NOT NULL,
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
     comprobante_id uuid NOT NULL,
     codigo character varying(2) NOT NULL,
     codigo_retencion character varying(5) NOT NULL,
@@ -301,7 +301,7 @@ COMMENT ON TABLE public.comprobante_retenciones IS 'Detalles de retenciones';
 --
 
 CREATE TABLE public.comprobante_totales (
-    id uuid DEFAULT extensions.uuid_generate_v4() NOT NULL,
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
     comprobante_id uuid NOT NULL,
     codigo character varying(2) NOT NULL,
     codigo_porcentaje character varying(4) NOT NULL,
@@ -325,7 +325,7 @@ COMMENT ON TABLE public.comprobante_totales IS 'Totales de impuestos por comprob
 --
 
 CREATE TABLE public.comprobante_xmls (
-    id uuid DEFAULT extensions.uuid_generate_v4() NOT NULL,
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
     comprobante_id uuid NOT NULL,
     created_at timestamp with time zone DEFAULT now(),
     xml_autorizado_path character varying(500),
@@ -352,7 +352,7 @@ COMMENT ON COLUMN public.comprobante_xmls.xml_autorizado_path IS 'Ruta relativa 
 --
 
 CREATE TABLE public.comprobantes (
-    id uuid DEFAULT extensions.uuid_generate_v4() NOT NULL,
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
     emisor_id uuid NOT NULL,
     punto_emision_id uuid NOT NULL,
     receptor_id uuid,
@@ -411,7 +411,7 @@ COMMENT ON TABLE public.comprobantes IS 'Tabla principal de comprobantes electr�
 --
 
 CREATE TABLE public.detalles_adicionales (
-    id uuid DEFAULT extensions.uuid_generate_v4() NOT NULL,
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
     comprobante_detalle_id uuid NOT NULL,
     nombre character varying(100) NOT NULL,
     valor character varying(300) NOT NULL
@@ -430,7 +430,7 @@ COMMENT ON TABLE public.detalles_adicionales IS 'Detalles adicionales por línea
 --
 
 CREATE TABLE public.emisores (
-    id uuid DEFAULT extensions.uuid_generate_v4() NOT NULL,
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
     tenant_id uuid,
     ruc character varying(13) NOT NULL,
     razon_social character varying(300) NOT NULL,
@@ -515,7 +515,7 @@ COMMENT ON COLUMN public.emisores.certificado_updated_at IS 'Última actualizaci
 --
 
 CREATE TABLE public.establecimientos (
-    id uuid DEFAULT extensions.uuid_generate_v4() NOT NULL,
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
     emisor_id uuid NOT NULL,
     codigo character varying(3) NOT NULL,
     direccion text NOT NULL,
@@ -589,7 +589,7 @@ CREATE TABLE public.guia_detalles (
 --
 
 CREATE TABLE public.info_adicional (
-    id uuid DEFAULT extensions.uuid_generate_v4() NOT NULL,
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
     comprobante_id uuid NOT NULL,
     nombre character varying(100) NOT NULL,
     valor character varying(300) NOT NULL
@@ -608,7 +608,7 @@ COMMENT ON TABLE public.info_adicional IS 'Campos adicionales a nivel de comprob
 --
 
 CREATE TABLE public.motivos_nota_debito (
-    id uuid DEFAULT extensions.uuid_generate_v4() NOT NULL,
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
     comprobante_id uuid NOT NULL,
     razon text NOT NULL,
     valor numeric(18,2) NOT NULL
@@ -627,7 +627,7 @@ COMMENT ON TABLE public.motivos_nota_debito IS 'Motivos/razones de notas de déb
 --
 
 CREATE TABLE public.puntos_emision (
-    id uuid DEFAULT extensions.uuid_generate_v4() NOT NULL,
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
     establecimiento_id uuid NOT NULL,
     codigo character varying(3) NOT NULL,
     descripcion character varying(100),
@@ -648,7 +648,7 @@ COMMENT ON TABLE public.puntos_emision IS 'Puntos de emisión por establecimient
 --
 
 CREATE TABLE public.secuenciales (
-    id uuid DEFAULT extensions.uuid_generate_v4() NOT NULL,
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
     punto_emision_id uuid NOT NULL,
     tipo_comprobante character varying(2) NOT NULL,
     ultimo_secuencial integer DEFAULT 0,
@@ -682,7 +682,7 @@ CREATE TABLE public.sistema_config (
 --
 
 CREATE TABLE public.tenants (
-    id uuid DEFAULT extensions.uuid_generate_v4() NOT NULL,
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
     nombre character varying(300) NOT NULL,
     plan character varying(50) DEFAULT 'BASICO'::character varying,
     estado character varying(20) DEFAULT 'ACTIVO'::character varying,
