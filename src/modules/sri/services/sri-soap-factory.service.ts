@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import * as soap from 'soap';
 import { Client } from 'soap';
+import * as https from 'https';
 
 @Injectable()
 export class SriSoapFactoryService {
@@ -8,6 +9,19 @@ export class SriSoapFactoryService {
   
   // Cache de clientes en memoria. Clave: tipo_ambiente (ej: 'recepcion_1')
   private clients = new Map<string, Client>();
+
+  /**
+   * Agente HTTPS configurado para compatibilidad con los servidores del SRI Ecuador.
+   * Los servidores del SRI usan certificados/configuraciones TLS legacy que
+   * Node.js v18+ (OpenSSL 3.x) rechaza por defecto.
+   */
+  private readonly sriHttpsAgent = new https.Agent({
+    rejectUnauthorized: false,
+    minVersion: 'TLSv1.2',
+    maxVersion: 'TLSv1.2',
+    ciphers: 'DEFAULT:@SECLEVEL=0',
+    keepAlive: false,
+  });
 
   private readonly WSDL_URLS = {
     recepcion: {
@@ -19,6 +33,20 @@ export class SriSoapFactoryService {
       '2': 'https://cel.sri.gob.ec/comprobantes-electronicos-ws/AutorizacionComprobantesOffline?wsdl',    // Producción
     }
   };
+
+  /** Opciones compartidas para la creación de clientes SOAP del SRI */
+  private getSoapOptions() {
+    return {
+      wsdl_options: {
+        httpsAgent: this.sriHttpsAgent,
+        rejectUnauthorized: false,
+      },
+      request: require('axios').create({
+        httpsAgent: this.sriHttpsAgent,
+        timeout: 30000,
+      }),
+    };
+  }
 
   /**
    * Obtiene (o crea y cachea) un cliente SOAP para el servicio de Recepción
@@ -37,7 +65,12 @@ export class SriSoapFactoryService {
     }
 
     this.logger.log(`Creando nuevo cliente SOAP de Recepción para ambiente ${ambiente}`);
-    const client = await soap.createClientAsync(wsdlUrl);
+    const options = this.getSoapOptions();
+    const client = await soap.createClientAsync(wsdlUrl, options);
+    client.setSecurity(new soap.ClientSSLSecurity(null as any, null as any, null as any, {
+      rejectUnauthorized: false,
+      agent: this.sriHttpsAgent,
+    }));
     
     this.clients.set(cacheKey, client);
     return client;
@@ -60,7 +93,12 @@ export class SriSoapFactoryService {
     }
 
     this.logger.log(`Creando nuevo cliente SOAP de Autorización para ambiente ${ambiente}`);
-    const client = await soap.createClientAsync(wsdlUrl);
+    const options = this.getSoapOptions();
+    const client = await soap.createClientAsync(wsdlUrl, options);
+    client.setSecurity(new soap.ClientSSLSecurity(null as any, null as any, null as any, {
+      rejectUnauthorized: false,
+      agent: this.sriHttpsAgent,
+    }));
     
     this.clients.set(cacheKey, client);
     return client;
