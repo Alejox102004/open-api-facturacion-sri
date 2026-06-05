@@ -374,10 +374,13 @@ export class RideGenerator {
         if (Y < 180) return; // Basic page break safety
         BOX(page, M, Y, CW, RH);
         cx = M;
+        const descText = d.unidadMedida
+          ? `${s(d.descripcion)} (${s(d.unidadMedida)})`
+          : s(d.descripcion);
         const vals = [
           s(d.codigoPrincipal),
           fmt(d.cantidad),
-          s(d.descripcion),
+          descText,
           fmt(d.precioUnitario),
           fmt(d.descuento),
           fmt(d.precioTotalSinImpuesto)
