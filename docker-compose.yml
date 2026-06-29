@@ -42,16 +42,17 @@ services:
       dockerfile: Dockerfile
     container_name: open-api-facturacion-sri
     restart: unless-stopped
-    # Usar la red del host directamente para evitar problemas de conectividad
-    # con los servidores SOAP del SRI Ecuador (ECONNRESET en red bridge)
-    network_mode: host
     env_file:
       - .env.docker
     environment:
-      # Con network_mode: host, Redis se accede por localhost
-      REDIS_HOST: 127.0.0.1
+      REDIS_HOST: redis
       REDIS_PORT: 6379
       REDIS_PASSWORD: ${REDIS_PASSWORD:-}
+    ports:
+      - '${PORT:-3001}:3001'
+    depends_on:
+      redis:
+        condition: service_healthy
 
     # Volume mounts for persistent data
     volumes:
