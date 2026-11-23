@@ -16,6 +16,7 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
 import { unlinkSync, existsSync, readFileSync } from 'fs';
 import { join } from 'path';
+import { randomBytes } from 'crypto';
 import {
   ApiTags,
   ApiOperation,
@@ -40,7 +41,8 @@ import { EncryptionService } from '../../common/services/encryption.service';
 import { XmlSignerService } from '../sri/services/xml-signer.service';
 import { EmisoresService } from '../emisores/emisores.service';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
-import { JwtPayload } from '../auth/dto/auth.dto';
+import { JwtPayload, UserRole } from '../auth/dto/auth.dto';
+import { Roles } from '../auth/decorators/roles.decorator';
 
 @ApiTags('Certificates')
 @ApiBearerAuth('JWT')
@@ -60,7 +62,10 @@ export class CertificateController {
    * GET /certificates/list-certs
    * List available certificates
    */
+  // Listar, borrar, inspeccionar o probar contraseñas de certificados afecta a
+  // todos los emisores (directorio compartido): solo SUPERADMIN.
   @Get('list-certs')
+  @Roles(UserRole.SUPERADMIN)
   @ApiOperation({ summary: 'Listar certificados disponibles' })
   @ApiQuery({ name: 'page', required: false, description: 'Número de página' })
   @ApiQuery({
@@ -94,6 +99,7 @@ export class CertificateController {
    * Delete a certificate
    */
   @Delete('delete-cert/:fileName')
+  @Roles(UserRole.SUPERADMIN)
   @ApiOperation({ summary: 'Eliminar un certificado' })
   @ApiParam({ name: 'fileName', description: 'Nombre del archivo .p12' })
   @ApiResponse({ status: 200, description: 'Certificado eliminado' })
@@ -168,7 +174,12 @@ export class CertificateController {
           cb(null, STORAGE_PATHS.certs);
         },
         filename: (req, file, cb) => {
-          cb(null, sanitizeFilename(file.originalname));
+          // Prefijo único: antes dos emisores que subían "firma.p12" se pisaban
+          // el archivo (y la validación fallida de uno borraba el del otro).
+          cb(
+            null,
+            `__`,
+          );
         },
       }),
       fileFilter: (req, file, cb) => {
@@ -376,6 +387,7 @@ export class CertificateController {
    * Get certificate info
    */
   @Get('cert-info/:fileName')
+  @Roles(UserRole.SUPERADMIN)
   @ApiOperation({ summary: 'Obtener información de un certificado' })
   @ApiParam({ name: 'fileName', description: 'Nombre del archivo .p12' })
   @ApiResponse({ status: 200, description: 'Información del certificado' })
@@ -399,6 +411,7 @@ export class CertificateController {
    * Validate an existing certificate with password
    */
   @Post('validate-cert/:fileName')
+  @Roles(UserRole.SUPERADMIN)
   @ApiOperation({ summary: 'Validar certificado existente' })
   @ApiParam({ name: 'fileName', description: 'Nombre del archivo .p12' })
   @ApiResponse({ status: 200, description: 'Resultado de validación' })
