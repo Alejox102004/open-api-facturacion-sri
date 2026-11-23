@@ -14,6 +14,24 @@
 
 ---
 
+## Desarrollo local en InventarialPro
+
+Este microservicio lo usa el backend de InventarialPro para firmar y enviar las facturas al SRI. La guía completa de la plataforma está en `backend-facturacion-inventario/README.md`. Para levantar solo este servicio:
+
+```bash
+docker compose -f docker-compose.dev.yml up -d   # PostgreSQL 17 (:5433) con init.sql cargado, y Redis (:6379)
+cp .env.example .env.development                  # valores de desarrollo; npm run start:dev lee este archivo
+npm install
+npm run start:dev                                 # http://localhost:3001
+```
+
+- La base se crea sola la primera vez con `database/init.sql`, que incluye el usuario `superadmin@openapi-sri.com` / `Admin123!`. Es el que usa el backend en local.
+- Por defecto apunta al ambiente de **pruebas** del SRI (celcer).
+- Para borrar la base y empezar de cero: `docker compose -f docker-compose.dev.yml down -v`.
+- **Ojo:** este repo tiene como `upstream` el proyecto público original. Los push y PR van a `origin` (github.com/Alejox102004/open-api-facturacion-sri).
+
+---
+
 ## ¿Qué hace esta API?
 
 Integra tu sistema (ERP, POS, e-commerce, SaaS) con el **Servicio de Rentas Internas (SRI) de Ecuador** mediante un único endpoint REST. Ella se encarga de todo el flujo complejo por ti:

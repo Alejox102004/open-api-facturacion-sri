@@ -1,0 +1,47 @@
+# Infraestructura para desarrollo local: PostgreSQL + Redis.
+# La API corre fuera de Docker con `npm run start:dev` (ver README, "Desarrollo local").
+#
+#   docker compose -f docker-compose.dev.yml up -d
+#
+# La primera vez PostgreSQL ejecuta database/init.sql (esquema, catálogos SRI y
+# usuario superadmin@openapi-sri.com / Admin123!). Para empezar de cero:
+#   docker compose -f docker-compose.dev.yml down -v
+services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: sri-dev-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: db_sri
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      # 5433 para no chocar con un PostgreSQL instalado en el equipo
+      - '127.0.0.1:5433:5432'
+    volumes:
+      - sri_dev_pg:/var/lib/postgresql/data
+      - ./database/init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U postgres -d db_sri']
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    container_name: sri-dev-redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    ports:
+      - '127.0.0.1:6379:6379'
+    volumes:
+      - sri_dev_redis:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  sri_dev_pg:
+  sri_dev_redis:
