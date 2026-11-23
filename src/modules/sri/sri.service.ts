@@ -709,6 +709,7 @@ export class SriService {
     estados?: string[];
     reintentar?: boolean;
     limite?: number;
+    rucEmisor?: string;
   }): Promise<{
     procesados: number;
     actualizados: number;
@@ -750,10 +751,13 @@ export class SriService {
       const batchLimit = Math.min(BATCH_SIZE, limiteGlobal - totalProcesados);
 
       // Obtener lote de comprobantes pendientes
+      // Limitar al emisor solicitado: sin este filtro un tenant sincronizaba
+      // (y veía las claves de acceso de) los comprobantes de todos los demás.
       const resultado = await this.listarComprobantes({
         estados,
         limit: batchLimit,
         offset,
+        ...(options.rucEmisor ? { rucEmisor: options.rucEmisor } : {}),
       });
 
       // El WHERE ya filtra por estados en la query SQL, no necesitamos .filter() redundante
