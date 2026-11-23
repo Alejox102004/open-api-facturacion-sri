@@ -372,6 +372,12 @@ export class SriController {
           ...query,
           emisorIds: emisoresDelTenant.map((e) => e.id),
         });
+      } else {
+        // Usuario sin tenant y sin rucEmisor: antes recibía los comprobantes
+        // de todos los tenants.
+        throw new ForbiddenException(
+          'Debe especificar rucEmisor para listar comprobantes',
+        );
       }
     }
 

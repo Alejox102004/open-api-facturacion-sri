@@ -10,6 +10,7 @@ import {
   UseInterceptors,
   UploadedFile,
   BadRequestException,
+  ForbiddenException,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import {
@@ -75,8 +76,12 @@ export class EmisoresController {
     @Body() dto: CreateEmisorDto,
     @CurrentUser() user: JwtPayload,
   ): Promise<EmisorResponseDto> {
-    // Si no es SUPERADMIN, forzar el tenantId del usuario
-    if (user.rol !== UserRole.SUPERADMIN && user.tenantId) {
+    // Si no es SUPERADMIN, forzar el tenantId del usuario (y exigir que tenga uno:
+    // antes un usuario sin tenant podía asignar cualquier tenantId).
+    if (user.rol !== UserRole.SUPERADMIN) {
+      if (!user.tenantId) {
+        throw new ForbiddenException('Tu usuario no tiene un tenant asignado');
+      }
       dto.tenantId = user.tenantId;
     }
     return this.emisoresService.create(dto);
