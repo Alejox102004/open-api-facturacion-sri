@@ -1,3 +1,4 @@
+import { assertSafeFileName } from '../../common/utils/file.utils';
 import {
   Injectable,
   Logger,
@@ -84,6 +85,7 @@ export class CertificateService {
    * Check if certificate exists
    */
   certificateExists(fileName: string): boolean {
+    assertSafeFileName(fileName);
     const filePath = join(this.certsDir, fileName);
     return existsSync(filePath);
   }
@@ -92,6 +94,7 @@ export class CertificateService {
    * Get certificate file path
    */
   getCertificatePath(fileName: string): string {
+    assertSafeFileName(fileName);
     return join(this.certsDir, fileName);
   }
 
@@ -170,6 +173,7 @@ export class CertificateService {
       );
     }
 
+    assertSafeFileName(fileName);
     const filePath = join(this.certsDir, fileName);
 
     if (!existsSync(filePath)) {
@@ -189,6 +193,7 @@ export class CertificateService {
       throw new NotFoundException(`El certificado ${fileName} no existe`);
     }
 
+    assertSafeFileName(fileName);
     const filePath = join(this.certsDir, fileName);
     const stats = statSync(filePath);
 
@@ -212,6 +217,7 @@ export class CertificateService {
       throw new NotFoundException(`El certificado ${fileName} no existe`);
     }
 
+    assertSafeFileName(fileName);
     const filePath = join(this.certsDir, fileName);
     const p12Buffer = readFileSync(filePath);
 

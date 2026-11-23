@@ -1,3 +1,4 @@
+import { assertSafeFileName } from '../../common/utils/file.utils';
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { existsSync, readFileSync } from 'fs';
@@ -264,6 +265,7 @@ export class SignatureService {
       );
 
       // Verify certificate exists
+      assertSafeFileName(certFile);
       const certPath = join(this.certsDir, certFile);
       if (!existsSync(certPath)) {
         throw new Error(
