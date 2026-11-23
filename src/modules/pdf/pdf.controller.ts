@@ -1,3 +1,4 @@
+import { assertSafeFileName } from '../../common/utils/file.utils';
 import {
   Controller,
   Get,
@@ -463,6 +464,7 @@ export class PdfController {
       );
     }
 
+    assertSafeFileName(fileName);
     const filePath = join(STORAGE_PATHS.pdfs, type, fileName);
 
     if (!existsSync(filePath)) {
