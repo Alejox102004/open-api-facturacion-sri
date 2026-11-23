@@ -95,7 +95,7 @@ export class EmisoresService {
     }
 
     // Verificar que el emisor pertenece al tenant del usuario
-    if (emisor.tenantId && emisor.tenantId !== user.tenantId) {
+    if (!user.tenantId || emisor.tenantId !== user.tenantId) {
       throw new ForbiddenException('No tienes acceso a este emisor');
     }
 
@@ -137,10 +137,7 @@ export class EmisoresService {
       return emisor;
     }
 
-    if (
-      !user.tenantId ||
-      (emisor.tenantId && emisor.tenantId !== user.tenantId)
-    ) {
+    if (!user.tenantId || emisor.tenantId !== user.tenantId) {
       this.logger.warn(
         `IDOR blocked: user ${user.sub} (tenant ${user.tenantId}) tried to access emisor ${emisorId} (tenant ${emisor.tenantId})`,
       );
@@ -169,10 +166,9 @@ export class EmisoresService {
       return emisor;
     }
 
-    if (
-      !user.tenantId ||
-      (emisor.tenantId && emisor.tenantId !== user.tenantId)
-    ) {
+    // Denegar por defecto: un emisor sin tenant (tenantId NULL) ya no queda
+    // abierto a todos los tenants; solo SUPERADMIN puede operarlo.
+    if (!user.tenantId || emisor.tenantId !== user.tenantId) {
       this.logger.warn(
         `IDOR blocked: user ${user.sub} (tenant ${user.tenantId}) tried to access RUC ${ruc} (tenant ${emisor.tenantId})`,
       );
