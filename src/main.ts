@@ -118,12 +118,20 @@ Todos los endpoints requieren un token JWT.
     .addTag('Images', 'Gestión de imágenes')
     .build();
 
-  const document = SwaggerModule.createDocument(app, swaggerConfig);
-  SwaggerModule.setup('api', app, document, {
-    swaggerOptions: {
-      persistAuthorization: true, // Mantiene el token JWT entre recargas del Swagger UI
-    },
-  });
+  // Swagger expone todo el esquema de la API sin autenticación: en producción
+  // queda apagado salvo que se active explícitamente con SWAGGER_ENABLED=true.
+  const swaggerEnabled =
+    process.env.SWAGGER_ENABLED !== undefined
+      ? process.env.SWAGGER_ENABLED === 'true'
+      : process.env.NODE_ENV !== 'production';
+  if (swaggerEnabled) {
+    const document = SwaggerModule.createDocument(app, swaggerConfig);
+    SwaggerModule.setup('api', app, document, {
+      swaggerOptions: {
+        persistAuthorization: true, // Mantiene el token JWT entre recargas del Swagger UI
+      },
+    });
+  }
 
   // ===== INICIALIZAR DIRECTORIOS =====
   const templatesDir = STORAGE_PATHS.templates;

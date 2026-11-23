@@ -15,8 +15,16 @@ export class SriSoapFactoryService {
    * Los servidores del SRI usan certificados/configuraciones TLS legacy que
    * Node.js v18+ (OpenSSL 3.x) rechaza por defecto.
    */
+  /**
+   * Verificación del certificado TLS del SRI. Por compatibilidad sigue
+   * desactivada por defecto; con SRI_TLS_REJECT_UNAUTHORIZED=true se valida la
+   * cadena (recomendado: activarlo y comprobar que la emisión sigue funcionando).
+   */
+  private readonly verifyTls =
+    process.env.SRI_TLS_REJECT_UNAUTHORIZED === 'true';
+
   private readonly sriHttpsAgent = new https.Agent({
-    rejectUnauthorized: false,
+    rejectUnauthorized: this.verifyTls,
     minVersion: 'TLSv1.2',
     maxVersion: 'TLSv1.2',
     ciphers: 'DEFAULT:@SECLEVEL=0',
@@ -39,7 +47,7 @@ export class SriSoapFactoryService {
     return {
       wsdl_options: {
         httpsAgent: this.sriHttpsAgent,
-        rejectUnauthorized: false,
+        rejectUnauthorized: this.verifyTls,
       },
       request: require('axios').create({
         httpsAgent: this.sriHttpsAgent,
@@ -68,7 +76,7 @@ export class SriSoapFactoryService {
     const options = this.getSoapOptions();
     const client = await soap.createClientAsync(wsdlUrl, options);
     client.setSecurity(new soap.ClientSSLSecurity(null as any, null as any, null as any, {
-      rejectUnauthorized: false,
+      rejectUnauthorized: this.verifyTls,
       agent: this.sriHttpsAgent,
     }));
     
@@ -96,7 +104,7 @@ export class SriSoapFactoryService {
     const options = this.getSoapOptions();
     const client = await soap.createClientAsync(wsdlUrl, options);
     client.setSecurity(new soap.ClientSSLSecurity(null as any, null as any, null as any, {
-      rejectUnauthorized: false,
+      rejectUnauthorized: this.verifyTls,
       agent: this.sriHttpsAgent,
     }));
     
