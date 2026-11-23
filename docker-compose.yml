@@ -21,7 +21,9 @@ services:
       fi
       '
     ports:
-      - '${REDIS_PORT:-6379}:6379'
+      # Solo localhost: la API usa network_mode host y accede por 127.0.0.1.
+      # Publicado en todas las interfaces, cualquiera podía encolar emisiones.
+      - '127.0.0.1:${REDIS_PORT:-6379}:6379'
     volumes:
       - redis_data:/data
     healthcheck:
