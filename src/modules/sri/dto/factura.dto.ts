@@ -2,6 +2,8 @@ import {
   IsString,
   IsOptional,
   IsArray,
+  IsNumber,
+  Min,
   ValidateNested,
   Matches,
   IsEnum,
@@ -93,6 +95,15 @@ export class CreateFacturaDto {
   @IsOptional()
   @IsString()
   guiaRemision?: string;
+
+  @ApiPropertyOptional({
+    description:
+      'Propina legal del 10% por servicios (no forma parte de base imponible IVA, máx 10% del subtotal)',
+  })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  propina?: number;
 }
 
 export class FacturaResponseDto {

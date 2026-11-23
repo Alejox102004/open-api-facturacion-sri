@@ -215,4 +215,47 @@ describe('FacturaService — calculateTotales (Decimal.js)', () => {
     expect(result.totalSinImpuestos).toBe(100);
     expect(result.importeTotal).toBe(100);
   });
+
+  it('debe sumar propina legal del 10% sin gravar IVA (restaurantes calificados)', () => {
+    const detalles = [
+      {
+        precioTotalSinImpuesto: 100,
+        descuento: 0,
+        impuestos: [
+          {
+            codigo: '2',
+            codigoPorcentaje: '4',
+            tarifa: 15,
+            baseImponible: 100,
+            valor: 15,
+          },
+        ],
+      },
+    ];
+
+    const result = service.calculateTotales(detalles, 10);
+    expect(result.totalSinImpuestos).toBe(100);
+    expect(result.propina).toBe(10);
+    expect(result.importeTotal).toBe(125);
+  });
+
+  it('debe rechazar propina superior al 10% del subtotal sin impuestos', () => {
+    const detalles = [
+      {
+        precioTotalSinImpuesto: 50,
+        descuento: 0,
+        impuestos: [
+          {
+            codigo: '2',
+            codigoPorcentaje: '4',
+            tarifa: 15,
+            baseImponible: 50,
+            valor: 7.5,
+          },
+        ],
+      },
+    ];
+
+    expect(() => service.calculateTotales(detalles, 6)).toThrow();
+  });
 });

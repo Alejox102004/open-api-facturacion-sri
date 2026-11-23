@@ -55,9 +55,11 @@ export enum CodigoPorcentajeIVA {
   IVA_0 = '0',
   IVA_12 = '2',
   IVA_14 = '3', // Vigente hasta 2016
+  IVA_15 = '4', // Vigente desde abril 2024
+  IVA_5 = '5',  // Materiales de construcción / especiales
   IVA_NO_OBJETO = '6',
   IVA_EXENTO = '7',
-  IVA_15 = '4', // Vigente desde abril 2024
+  IVA_8 = '8',  // Tarifa diferenciada turística en feriados decretados (8%)
 }
 
 /**

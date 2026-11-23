@@ -535,8 +535,9 @@ export class FacturaService {
       totalSinImpuestos,
       totalDescuento,
       totalConImpuestos,
+      propina,
       importeTotal,
-    } = this.calculateTotales(detalles);
+    } = this.calculateTotales(detalles, dto.propina);
 
     const infoTributaria: InfoTributaria = {
       ambiente,
@@ -567,6 +568,7 @@ export class FacturaService {
       totalSinImpuestos,
       totalDescuento,
       totalConImpuestos,
+      propina: propina > 0 ? propina : undefined,
       importeTotal,
       moneda: 'DOLAR',
       pagos: dto.pagos.map((p) => ({
@@ -642,10 +644,14 @@ export class FacturaService {
     });
   }
 
-  private calculateTotales(detalles: DetalleFactura[]): {
+  private calculateTotales(
+    detalles: DetalleFactura[],
+    propinaInput?: number,
+  ): {
     totalSinImpuestos: number;
     totalDescuento: number;
     totalConImpuestos: TotalImpuesto[];
+    propina: number;
     importeTotal: number;
   } {
     let totalSinImpuestos = new Decimal(0);
@@ -700,12 +706,24 @@ export class FacturaService {
       (sum, imp) => sum.plus(new Decimal(imp.valor)),
       new Decimal(0),
     );
-    const importeTotal = totalSinImpuestos.plus(totalImpuestos);
+    const propinaDec = new Decimal(propinaInput ?? 0).toDecimalPlaces(2);
+    if (propinaDec.lessThan(0)) {
+      throw new BadRequestException('La propina no puede ser negativa');
+    }
+    const maxPropina = totalSinImpuestos.times(0.1).toDecimalPlaces(2).plus(0.02);
+    if (propinaDec.greaterThan(0) && propinaDec.greaterThan(maxPropina)) {
+      throw new BadRequestException(
+        `La propina legal (${propinaDec.toFixed(2)}) no puede superar el 10% del subtotal sin impuestos (${totalSinImpuestos.toFixed(2)})`,
+      );
+    }
+
+    const importeTotal = totalSinImpuestos.plus(totalImpuestos).plus(propinaDec);
 
     return {
       totalSinImpuestos: totalSinImpuestos.toDecimalPlaces(2).toNumber(),
       totalDescuento: totalDescuento.toDecimalPlaces(2).toNumber(),
       totalConImpuestos,
+      propina: propinaDec.toNumber(),
       importeTotal: importeTotal.toDecimalPlaces(2).toNumber(),
     };
   }
