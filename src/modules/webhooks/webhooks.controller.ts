@@ -95,7 +95,11 @@ export class WebhooksController {
     type: WebhookResponseDto,
   })
   @ApiResponse({ status: 404, description: 'Webhook no encontrado' })
-  async findOne(@Param('id') id: string): Promise<WebhookResponseDto> {
+  async findOne(
+    @Param('id') id: string,
+    @CurrentUser() user: JwtPayload,
+  ): Promise<WebhookResponseDto> {
+    await this.webhooksService.assertAccess(id, user);
     return this.webhooksService.findOne(id);
   }
 
@@ -114,6 +118,7 @@ export class WebhooksController {
     if (dto.emisorId) {
       await this.emisoresService.validateEmisorAccess(dto.emisorId, user);
     }
+    await this.webhooksService.assertSafeUrl(dto.url, user);
     // Vincular webhook al tenant del usuario
     return this.webhooksService.create(dto, user.tenantId || undefined);
   }
@@ -129,7 +134,12 @@ export class WebhooksController {
   async update(
     @Param('id') id: string,
     @Body() dto: UpdateWebhookDto,
+    @CurrentUser() user: JwtPayload,
   ): Promise<WebhookResponseDto> {
+    await this.webhooksService.assertAccess(id, user);
+    if (dto.url !== undefined) {
+      await this.webhooksService.assertSafeUrl(dto.url, user);
+    }
     return this.webhooksService.update(id, dto);
   }
 
@@ -144,7 +154,11 @@ export class WebhooksController {
     status: 404,
     description: 'Webhook no encontrado o ya inactivo',
   })
-  async delete(@Param('id') id: string): Promise<WebhookResponseDto> {
+  async delete(
+    @Param('id') id: string,
+    @CurrentUser() user: JwtPayload,
+  ): Promise<WebhookResponseDto> {
+    await this.webhooksService.assertAccess(id, user);
     return this.webhooksService.delete(id);
   }
 
@@ -156,7 +170,11 @@ export class WebhooksController {
     type: WebhookResponseDto,
   })
   @ApiResponse({ status: 404, description: 'Webhook no encontrado' })
-  async regenerateSecret(@Param('id') id: string): Promise<WebhookResponseDto> {
+  async regenerateSecret(
+    @Param('id') id: string,
+    @CurrentUser() user: JwtPayload,
+  ): Promise<WebhookResponseDto> {
+    await this.webhooksService.assertAccess(id, user);
     return this.webhooksService.regenerateSecret(id);
   }
 
@@ -181,6 +199,7 @@ export class WebhooksController {
   @ApiResponse({ status: 404, description: 'Webhook no encontrado' })
   async getLogs(
     @Param('id') id: string,
+    @CurrentUser() user: JwtPayload,
     @Query('page') page?: number,
     @Query('limit') limit?: number,
   ): Promise<{
@@ -189,6 +208,7 @@ export class WebhooksController {
     page: number;
     totalPages: number;
   }> {
+    await this.webhooksService.assertAccess(id, user);
     return this.webhooksService.getLogs(
       id,
       Number(page) || 1,
