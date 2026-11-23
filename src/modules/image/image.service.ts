@@ -1,3 +1,4 @@
+import { assertSafeFileName } from '../../common/utils/file.utils';
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { existsSync, readdirSync, statSync, unlinkSync } from 'fs';
@@ -105,6 +106,7 @@ export class ImageService {
    * Delete an image
    */
   deleteImage(fileName: string): boolean {
+    assertSafeFileName(fileName);
     const filePath = join(this.getImagesDir(), fileName);
 
     if (!existsSync(filePath)) {

@@ -1,5 +1,6 @@
 import { existsSync, mkdirSync, statSync, readdirSync, unlinkSync } from 'fs';
-import { join, extname, parse } from 'path';
+import { join, extname, parse, basename } from 'path';
+import { BadRequestException } from '@nestjs/common';
 
 /**
  * Format file size to human readable format
@@ -84,4 +85,25 @@ export function hasValidExtension(
 ): boolean {
   const ext = extname(fileName).toLowerCase();
   return validExtensions.includes(ext);
+}
+
+/**
+ * Rechaza nombres de archivo recibidos del cliente que intenten salir del
+ * directorio base (separadores de ruta, "..", bytes nulos). Los nombres
+ * legítimos nunca los contienen, así que es transparente para el uso normal.
+ */
+export function assertSafeFileName(fileName: unknown): asserts fileName is string {
+  if (
+    typeof fileName !== 'string' ||
+    fileName.length === 0 ||
+    fileName.length > 255 ||
+    fileName.includes('/') ||
+    fileName.includes('\\') ||
+    fileName.includes('\0') ||
+    fileName === '.' ||
+    fileName === '..' ||
+    basename(fileName) !== fileName
+  ) {
+    throw new BadRequestException('Nombre de archivo inválido');
+  }
 }

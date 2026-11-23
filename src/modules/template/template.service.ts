@@ -1,3 +1,4 @@
+import { assertSafeFileName } from '../../common/utils/file.utils';
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { existsSync, readdirSync, statSync, unlinkSync, mkdirSync } from 'fs';
 import { join, extname, parse } from 'path';
@@ -63,6 +64,7 @@ export class TemplateService {
    * Get detailed template information
    */
   getTemplateInfo(fileName: string): TemplateInfo {
+    assertSafeFileName(fileName);
     const filePath = join(this.templatesDir, fileName);
 
     if (!existsSync(filePath)) {

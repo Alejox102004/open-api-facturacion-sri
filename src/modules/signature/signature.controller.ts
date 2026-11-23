@@ -1,3 +1,4 @@
+import { assertSafeFileName } from '../../common/utils/file.utils';
 import {
   Controller,
   Post,
@@ -103,6 +104,7 @@ export class SignatureController {
     }
 
     // Search first in 'others' folder
+    assertSafeFileName(fileName);
     let pdfPath = join(this.pdfDir, 'others', fileName);
 
     // If not in others, search in root for compatibility
