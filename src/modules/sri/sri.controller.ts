@@ -36,6 +36,7 @@ import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { JwtPayload, UserRole } from '../auth/dto/auth.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { Public } from '../auth/decorators/public.decorator';
+import { Roles } from '../auth/decorators/roles.decorator';
 import { ConfigService } from '@nestjs/config';
 import { extractRucFromClaveAcceso } from './utils/clave-acceso.utils';
 import {
@@ -305,6 +306,7 @@ export class SriController {
   }
 
   @Post('debug/factura-firmada')
+  @Roles(UserRole.SUPERADMIN)
   @UseGuards(JwtAuthGuard)
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
