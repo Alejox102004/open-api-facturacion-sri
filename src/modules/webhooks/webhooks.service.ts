@@ -16,6 +16,33 @@ import {
   WebhookEvent,
 } from './dto';
 import { WebhookJobData } from './webhook.processor';
+import { JwtPayload, UserRole } from '../auth/dto/auth.dto';
+import { lookup } from 'dns/promises';
+import { isIP } from 'net';
+
+/** true si la IP es de loopback, red privada, link-local, CGNAT o no enrutable. */
+export function isPrivateAddress(address: string): boolean {
+  let ip = address.toLowerCase();
+  if (ip.startsWith('::ffff:')) {
+    ip = ip.slice(7); // IPv4 mapeada en IPv6
+  }
+  if (isIP(ip) === 4) {
+    const [a, b] = ip.split('.').map(Number);
+    return (
+      a === 0 || a === 10 || a === 127 ||
+      (a === 100 && b >= 64 && b <= 127) ||
+      (a === 169 && b === 254) ||
+      (a === 172 && b >= 16 && b <= 31) ||
+      (a === 192 && b === 168) ||
+      a >= 224
+    );
+  }
+  return (
+    ip === '::' || ip === '::1' ||
+    ip.startsWith('fc') || ip.startsWith('fd') ||
+    ip.startsWith('fe8') || ip.startsWith('fe9') || ip.startsWith('fea') || ip.startsWith('feb')
+  );
+}
 
 @Injectable()
 export class WebhooksService {
@@ -99,6 +126,55 @@ export class WebhooksService {
 
     const result = await this.db.query(query, params);
     return result.rows.map((row: Record<string, unknown>) => this.mapToResponse(row));
+  }
+
+  /**
+   * Comprueba que el usuario puede operar el webhook. Antes los endpoints por id
+   * (ver, editar, borrar, regenerar secreto, logs) no miraban el tenant.
+   * Devuelve 404 para no revelar si el id existe en otro tenant.
+   */
+  async assertAccess(id: string, user: JwtPayload): Promise<void> {
+    if (user.rol === UserRole.SUPERADMIN) {
+      return;
+    }
+    const result = await this.db.query(`SELECT tenant_id FROM webhook_configs WHERE id = $1`, [id]);
+    const tenantId = result.rows[0]?.tenant_id as string | null | undefined;
+    if (!user.tenantId || !tenantId || tenantId !== user.tenantId) {
+      throw new NotFoundException(`Webhook con ID ${id} no encontrado`);
+    }
+  }
+
+  /**
+   * Evita SSRF: un tenant no puede apuntar webhooks a la red interna del
+   * servidor (localhost, red privada, metadatos de la nube). Las respuestas de
+   * los webhooks se guardan en los logs, que el tenant puede leer.
+   * El SUPERADMIN (la integración con el backend) queda exento.
+   */
+  async assertSafeUrl(url: string, user: JwtPayload): Promise<void> {
+    if (user.rol === UserRole.SUPERADMIN) {
+      return;
+    }
+    let parsed: URL;
+    try {
+      parsed = new URL(url);
+    } catch {
+      throw new BadRequestException('URL de webhook inválida');
+    }
+    if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
+      throw new BadRequestException('La URL del webhook debe ser http(s)');
+    }
+    const host = parsed.hostname.replace(/^\[|\]$/g, '');
+    let addresses: string[];
+    try {
+      addresses = isIP(host) ? [host] : (await lookup(host, { all: true })).map((a) => a.address);
+    } catch {
+      throw new BadRequestException(`No se pudo resolver el host ${host}`);
+    }
+    if (addresses.length === 0 || addresses.some((a) => isPrivateAddress(a))) {
+      throw new BadRequestException(
+        'La URL del webhook no puede apuntar a direcciones internas o privadas',
+      );
+    }
   }
 
   async findOne(id: string): Promise<WebhookResponseDto> {
@@ -282,8 +358,15 @@ export class WebhooksService {
     const params: (string | undefined)[] = [evento];
 
     if (emisorId) {
-      query += ` AND (emisor_id IS NULL OR emisor_id = $2)`;
+      // Solo webhooks del mismo tenant que el emisor del comprobante, o globales
+      // (tenant_id NULL, creados por SUPERADMIN, p. ej. la integración con el
+      // backend). Antes un webhook sin emisor de cualquier tenant recibía los
+      // eventos de todos.
+      query += ` AND (emisor_id IS NULL OR emisor_id = $2)`
+        + ` AND (tenant_id IS NULL OR tenant_id = (SELECT tenant_id FROM emisores WHERE id = $2))`;
       params.push(emisorId);
+    } else {
+      query += ` AND tenant_id IS NULL`;
     }
 
     const configs = await this.db.query(query, params);
