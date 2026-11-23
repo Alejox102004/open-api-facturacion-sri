@@ -81,10 +81,25 @@ export class AuthService {
         throw new UnauthorizedException('Token inválido para refrescar sesión');
       }
 
-      // Validar que el usuario sigue activo en la BD
-      await this.validatePayload(payload);
+      // Recargar el usuario desde la BD: rol y tenant actuales (no los del
+      // token anterior) y rechazo si fue desactivado. Antes se llamaba a
+      // validatePayload(), que rechaza los tokens de refresco, así que el
+      // refresco fallaba siempre.
+      const user = await this.db.queryOne<{
+        id: string;
+        email: string;
+        rol: string;
+        tenant_id: string | null;
+        activo: boolean;
+      }>('SELECT id, email, rol, tenant_id, activo FROM usuarios WHERE id = $1', [
+        payload.sub,
+      ]);
 
-      return this.generateTokens(payload);
+      if (!user || !user.activo) {
+        throw new UnauthorizedException('Token inválido o usuario inactivo');
+      }
+
+      return this.generateTokens(user);
     } catch (error: any) {
       this.logger.warn(`Refresh token fallido: ${error.message}`);
       throw new UnauthorizedException('Refresh token inválido o expirado');
