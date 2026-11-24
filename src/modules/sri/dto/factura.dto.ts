@@ -7,6 +7,7 @@ import {
   ValidateNested,
   Matches,
   IsEnum,
+  MaxLength,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
@@ -104,6 +105,18 @@ export class CreateFacturaDto {
   @IsNumber()
   @Min(0)
   propina?: number;
+
+  @ApiPropertyOptional({
+    description:
+      'Identificador del documento en el sistema que emite (p. ej. la venta). ' +
+      'Si ya existe una factura de este emisor con la misma referencia que está ' +
+      'autorizada o todavía puede autorizarse, se devuelve esa en lugar de emitir otra.',
+    maxLength: 100,
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  referenciaExterna?: string;
 }
 
 export class FacturaResponseDto {
