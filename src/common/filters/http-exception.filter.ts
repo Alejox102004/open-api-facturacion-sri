@@ -33,10 +33,14 @@ export class AllExceptionsFilter implements ExceptionFilter {
       stack = exception.stack;
     }
 
-    this.logger.error(
-      `${request.method} ${request.url} - ${status} - ${message}`,
-      stack,
-    );
+    const line = `${request.method} ${request.url} - ${status} - ${message}`;
+    if (status >= 500) {
+      this.logger.error(line, stack);
+    } else {
+      // Errores del cliente (validación, no encontrado, conflicto): no son fallos
+      // del servicio y no deben aparecer como ERROR en los logs.
+      this.logger.warn(line);
+    }
 
     response.status(status).json({
       success: false,
