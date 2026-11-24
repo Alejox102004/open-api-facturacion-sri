@@ -618,8 +618,58 @@ export class SriService {
   }
 
   /**
+   * Guarda localmente una autorización que el SRI ya emitió: estado, número,
+   * fecha y XML autorizado (lo necesita el RIDE). Avisa por webhook.
+   */
+  private async guardarAutorizacionDesdeSri(
+    comp: {
+      id: string;
+      claveAcceso: string;
+      fechaEmision: string | Date;
+      emisorId: string;
+      tipoComprobante: string;
+      secuencial: string;
+    },
+    auth: {
+      fechaAutorizacion?: string;
+      numeroAutorizacion?: string;
+      comprobante?: string;
+    },
+  ): Promise<void> {
+    await this.repository.updateComprobante(comp.id, {
+      estado: 'AUTORIZADO',
+      estado_sri: 'AUTORIZADO',
+      fecha_autorizacion: auth.fechaAutorizacion,
+      numero_autorizacion: auth.numeroAutorizacion,
+    });
+
+    if (auth.comprobante) {
+      const autorizadoPath = this.xmlStorage.saveXml(
+        extractRucFromClaveAcceso(comp.claveAcceso),
+        comp.claveAcceso,
+        new Date(comp.fechaEmision),
+        'autorizado',
+        auth.comprobante,
+      );
+      await this.repository.saveXml({
+        comprobante_id: comp.id,
+        xml_autorizado_path: autorizadoPath,
+      });
+    }
+
+    this.eventEmitter.emit('comprobante.autorizado', {
+      emisorId: comp.emisorId,
+      claveAcceso: comp.claveAcceso,
+      tipoComprobante: comp.tipoComprobante,
+      secuencial: comp.secuencial,
+      fechaAutorizacion: auth.fechaAutorizacion,
+      numeroAutorizacion: auth.numeroAutorizacion,
+    });
+  }
+
+  /**
    * Verifica el estado de un comprobante directamente en el SRI
-   * NO modifica la BD local, solo consulta
+   * Si el SRI ya lo autorizó y aquí sigue pendiente, guarda la autorización.
    */
   async verificarEnSri(claveAcceso: string): Promise<{
     claveAcceso: string;
@@ -651,6 +701,7 @@ export class SriService {
     let fechaAutorizacion: string | undefined;
     let numeroAutorizacion: string | undefined;
     let mensajes: string[] = [];
+    let authSri: any;
 
     if (
       respuestaSri.autorizaciones &&
@@ -661,6 +712,7 @@ export class SriService {
         ? respuestaSri.autorizaciones.autorizacion[0]
         : respuestaSri.autorizaciones.autorizacion;
 
+      authSri = auth;
       estadoSri = auth.estado || 'DESCONOCIDO';
       fechaAutorizacion = auth.fechaAutorizacion;
       numeroAutorizacion = auth.numeroAutorizacion;
@@ -677,10 +729,42 @@ export class SriService {
       }
     }
 
-    // 4. Determinar si está sincronizado
-    const sincronizado =
-      estadoLocal === estadoSri ||
-      (estadoLocal === 'AUTORIZADO' && estadoSri === 'AUTORIZADO');
+    // 4. Si el SRI ya lo autorizó y aquí sigue pendiente, guardar la
+    // autorización. Sin esto el backend marcaba la venta como AUTORIZADA (con
+    // esta consulta) mientras aquí seguía PENDIENTE y sin XML autorizado, y el
+    // RIDE (PDF) respondía 404.
+    let estadoLocalFinal = estadoLocal;
+    if (
+      comprobanteLocal?.id &&
+      estadoSri === 'AUTORIZADO' &&
+      estadoLocal !== 'AUTORIZADO' &&
+      estadoLocal !== 'ANULADO'
+    ) {
+      try {
+        await this.guardarAutorizacionDesdeSri(
+          {
+            id: comprobanteLocal.id,
+            claveAcceso,
+            fechaEmision: comprobanteLocal.fecha_emision,
+            emisorId: comprobanteLocal.emisor_id,
+            tipoComprobante: comprobanteLocal.tipo_comprobante,
+            secuencial: comprobanteLocal.secuencial,
+          },
+          authSri,
+        );
+        estadoLocalFinal = 'AUTORIZADO';
+        this.logger.log(
+          `...${claveAcceso.slice(-8)}: ${estadoLocal} -> AUTORIZADO (verificado en SRI)`,
+        );
+      } catch (error) {
+        this.logger.error(
+          `...${claveAcceso.slice(-8)}: no se pudo guardar la autorización - ${(error as Error).message}`,
+        );
+      }
+    }
+
+    // 5. Determinar si está sincronizado
+    const sincronizado = estadoLocalFinal === estadoSri;
 
     this.logger.log(
       `Estado SRI: ${estadoSri}, Estado Local: ${estadoLocal || 'No existe'}, Sincronizado: ${sincronizado}`,
@@ -693,7 +777,7 @@ export class SriService {
       fechaAutorizacion,
       numeroAutorizacion,
       mensajes: mensajes.length > 0 ? mensajes : undefined,
-      estadoLocal: estadoLocal || undefined,
+      estadoLocal: estadoLocalFinal || undefined,
       sincronizado,
     };
   }
@@ -801,43 +885,23 @@ export class SriService {
             estadoSri = auth.estado || 'DESCONOCIDO';
 
             if (auth.estado === 'AUTORIZADO') {
-              await this.repository.updateComprobante(comp.id as string, {
-                estado: 'AUTORIZADO',
-                estado_sri: 'AUTORIZADO',
-                fecha_autorizacion: auth.fechaAutorizacion,
-                numero_autorizacion: auth.numeroAutorizacion,
-              });
-
-              if (auth.comprobante) {
-                const fecha = new Date(comp.fechaEmision);
-                const ruc = extractRucFromClaveAcceso(comp.claveAcceso);
-                const autorizadoPath = this.xmlStorage.saveXml(
-                  ruc,
-                  comp.claveAcceso,
-                  fecha,
-                  'autorizado',
-                  auth.comprobante,
-                );
-                await this.repository.saveXml({
-                  comprobante_id: comp.id as string,
-                  xml_autorizado_path: autorizadoPath,
-                });
-              }
+              await this.guardarAutorizacionDesdeSri(
+                {
+                  id: comp.id as string,
+                  claveAcceso: comp.claveAcceso,
+                  fechaEmision: comp.fechaEmision,
+                  emisorId: comp.emisorId,
+                  tipoComprobante: comp.tipoComprobante,
+                  secuencial: comp.secuencial,
+                },
+                auth,
+              );
 
               accion = 'ACTUALIZADO';
               actualizados++;
               this.logger.log(
                 `...${comp.claveAcceso.slice(-8)}: Actualizado a AUTORIZADO desde SRI`,
               );
-
-              this.eventEmitter.emit('comprobante.autorizado', {
-                emisorId: comp.emisorId,
-                claveAcceso: comp.claveAcceso,
-                tipoComprobante: comp.tipoComprobante,
-                secuencial: comp.secuencial,
-                fechaAutorizacion: auth.fechaAutorizacion,
-                numeroAutorizacion: auth.numeroAutorizacion,
-              });
             } else if (
               (auth.estado as string) === 'RECHAZADO' ||
               (auth.estado as string) === 'DEVUELTA' ||
