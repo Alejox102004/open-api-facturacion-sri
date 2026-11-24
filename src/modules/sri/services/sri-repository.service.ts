@@ -284,6 +284,24 @@ export class SriRepositoryService {
     return result.rows[0];
   }
 
+  /**
+   * Comprobantes de un emisor emitidos para la misma referencia externa
+   * (p. ej. la venta del sistema cliente), del más reciente al más antiguo.
+   */
+  async findComprobantesByReferenciaExterna(
+    emisorId: string,
+    tipoComprobante: string,
+    referenciaExterna: string,
+  ): Promise<ComprobanteRecord[]> {
+    const result = await this.db.query(
+      `SELECT * FROM comprobantes
+       WHERE emisor_id = $1 AND tipo_comprobante = $2 AND id_referencia_externa = $3
+       ORDER BY created_at DESC`,
+      [emisorId, tipoComprobante, referenciaExterna],
+    );
+    return result.rows as ComprobanteRecord[];
+  }
+
   async findComprobanteByClaveAcceso(
     claveAcceso: string,
   ): Promise<ComprobanteRecord | null> {
