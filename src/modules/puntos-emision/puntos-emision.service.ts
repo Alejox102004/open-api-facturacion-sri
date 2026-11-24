@@ -366,6 +366,23 @@ export class PuntosEmisionService {
       throw new BadRequestException('El secuencial no puede ser negativo');
     }
 
+    // No se puede retroceder por debajo de un comprobante ya emitido: el siguiente
+    // saldría con un número repetido (clave de acceso duplicada / SRI lo devuelve).
+    const emitido = await this.db.query(
+      `SELECT MAX(secuencial::bigint) AS max_secuencial
+       FROM comprobantes
+       WHERE punto_emision_id = $1 AND tipo_comprobante = $2`,
+      [puntoEmisionId, tipoComprobante],
+    );
+    const maxEmitido = emitido.rows[0]?.max_secuencial
+      ? parseInt(emitido.rows[0].max_secuencial)
+      : 0;
+    if (dto.ultimoSecuencial < maxEmitido) {
+      throw new BadRequestException(
+        `Ya se emitió el comprobante con secuencial ${maxEmitido} en este punto de emisión; el último secuencial no puede ser menor a ${maxEmitido}`,
+      );
+    }
+
     const result = await this.db.query(
       `UPDATE secuenciales
        SET ultimo_secuencial = $1, updated_at = NOW()

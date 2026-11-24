@@ -2,6 +2,9 @@ import {
   IsString,
   IsOptional,
   IsNotEmpty,
+  IsInt,
+  Min,
+  Max,
   Length,
   Matches,
 } from 'class-validator';
@@ -135,5 +138,8 @@ export class UpdateSecuencialDto {
     minimum: 0,
   })
   @IsNotEmpty()
+  @IsInt({ message: 'El secuencial debe ser un número entero' })
+  @Min(0, { message: 'El secuencial no puede ser negativo' })
+  @Max(999999999, { message: 'El secuencial no puede tener más de 9 dígitos' })
   ultimoSecuencial: number;
 }
