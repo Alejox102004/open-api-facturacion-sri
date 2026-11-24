@@ -527,7 +527,7 @@ export class SriController {
   @ApiOperation({
     summary: 'Verificar estado en SRI',
     description:
-      'Consulta directamente al SRI el estado de autorización de un comprobante. NO modifica la BD local.',
+      'Consulta al SRI el estado de autorización de un comprobante. Si ya está AUTORIZADO y localmente no, guarda la autorización (estado, número y XML).',
   })
   @ApiParam({
     name: 'claveAcceso',
