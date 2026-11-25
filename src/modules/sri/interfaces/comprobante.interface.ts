@@ -6,6 +6,13 @@ import {
   FormaPago,
 } from '../constants';
 
+/** Leyendas válidas para el campo contribuyenteRimpe (ficha técnica SRI). */
+export const CONTRIBUYENTE_RIMPE_LEYENDAS = [
+  'CONTRIBUYENTE RÉGIMEN RIMPE',
+  'CONTRIBUYENTE NEGOCIO POPULAR - RÉGIMEN RIMPE',
+] as const;
+export type ContribuyenteRimpeLeyenda = (typeof CONTRIBUYENTE_RIMPE_LEYENDAS)[number];
+
 /**
  * Información tributaria común a todos los comprobantes
  */
@@ -22,7 +29,7 @@ export interface InfoTributaria {
   secuencial: string;
   dirMatriz: string;
   agenteRetencion?: string;
-  contribuyenteRimpe?: 'CONTRIBUYENTE RÉGIMEN RIMPE';
+  contribuyenteRimpe?: ContribuyenteRimpeLeyenda;
 }
 
 /**
