@@ -8,6 +8,7 @@ import {
   IsNumber,
   Min,
   IsNotEmpty,
+  MaxLength,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
@@ -173,6 +174,18 @@ export class CreateNotaCreditoDto {
   @ValidateNested({ each: true })
   @Type(() => CampoAdicionalDto)
   infoAdicional?: CampoAdicionalDto[];
+
+  @ApiPropertyOptional({
+    description:
+      'Identificador del documento en el sistema que emite (p. ej. la devolución). ' +
+      'Si ya existe una nota de crédito de este emisor con la misma referencia que está ' +
+      'autorizada o todavía puede autorizarse, se devuelve esa en lugar de emitir otra.',
+    maxLength: 100,
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  referenciaExterna?: string;
 }
 
 /**

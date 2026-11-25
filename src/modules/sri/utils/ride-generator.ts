@@ -1,6 +1,16 @@
 import { PDFDocument, rgb, StandardFonts, PDFPage, PDFFont } from 'pdf-lib';
 import { parseStringPromise } from 'xml2js';
 import * as QRCode from 'qrcode';
+import {
+  campoAdicional,
+  CampoAdicionalXml,
+  DatosModificacion,
+  DetalleNotaCreditoXml,
+  InfoNotaCreditoXml,
+  leerNotaCredito,
+  NotaCreditoXml,
+  totalesNotaCredito,
+} from './ride-nota-credito';
 
 // ─── Layout constants ────────────────────────────────────────────────────────
 const M      = 30;               // left/right margin
@@ -120,11 +130,18 @@ export class RideGenerator {
     let detalles: any[] = [];
     let adicional: any[] = [];
 
+    let modificacion: DatosModificacion | null = null;
+
     if (comp.factura) {
       info      = comp.factura.infoFactura         ?? {};
       it        = comp.factura.infoTributaria       ?? {};
       detalles  = arr(comp.factura.detalles?.detalle);
       adicional = arr(comp.factura.infoAdicional?.campoAdicional);
+    } else if (comp.notaCredito) {
+      tipo = 'NOTA DE CRÉDITO';
+      ({ info, it, detalles, adicional, modificacion } = leerNotaCredito(
+        comp.notaCredito as NotaCreditoXml,
+      ));
     } else {
       const rk = Object.keys(comp)[0];
       if (rk) {
@@ -320,7 +337,7 @@ export class RideGenerator {
     // § 3  DATOS DEL RECEPTOR
     // ══════════════════════════════════════════════════════════════════════════
     {
-      const BH = 55;
+      const BH = modificacion ? 97 : 55;
       BOX(page, M, Y, CW, BH);
 
       let yr = Y - 15;
@@ -335,7 +352,27 @@ export class RideGenerator {
 
       yr -= 14;
       T(page, 'Dirección:', M + 8, yr, 8, bold, 60);
-      T(page, info.direccionComprador ?? 'S/N', M + 85, yr, 8, font, CW - 100);
+      // La nota de crédito no lleva direccionComprador: se toma de info adicional
+      const direccion: unknown = modificacion
+        ? campoAdicional(adicional as CampoAdicionalXml[], 'direccion')
+        : info.direccionComprador;
+      T(page, s(direccion ?? 'S/N'), M + 85, yr, 8, font, CW - 100);
+
+      if (modificacion) {
+        // Documento sustento que modifica la nota de crédito
+        yr -= 14;
+        T(page, 'Comprobante que se modifica:', M + 8, yr, 8, bold, 170);
+        T(page, modificacion.documento, M + 185, yr, 8, font, CW - 195);
+
+        yr -= 14;
+        const etiquetaFecha = 'Fecha Emisión (Comprobante a modificar):';
+        T(page, etiquetaFecha, M + 8, yr, 8, bold, 170);
+        T(page, modificacion.fecha, M + 185, yr, 8, font, CW - 195);
+
+        yr -= 14;
+        T(page, 'Razón de Modificación:', M + 8, yr, 8, bold, 170);
+        T(page, modificacion.motivo, M + 185, yr, 8, font, CW - 195);
+      }
 
       Y -= BH + 10;
     }
@@ -416,6 +453,13 @@ export class RideGenerator {
         [`IVA ${ivaLabel}`,              fmt(ivaValor),               false],
         [`VALOR TOTAL`,                  fmt(info.importeTotal),       true ],
       ];
+      // La nota de crédito tiene su propio resumen (subtotales por tarifa)
+      const filasResumen = modificacion
+        ? totalesNotaCredito(
+            info as InfoNotaCreditoXml,
+            detalles as DetalleNotaCreditoXml[],
+          )
+        : totalRows;
 
       const LVAL_X  = TOT_X;
       const LVAL_W  = TOT_W - 55;  // label cell
@@ -429,7 +473,7 @@ export class RideGenerator {
       TC(page, 'RESUMEN', TOT_X, yt - ROW_H + 4, TOT_W, 7, bold);
       yt -= ROW_H;
 
-      totalRows.forEach(([label, val, isBold]) => {
+      filasResumen.forEach(([label, val, isBold]) => {
         const f = isBold ? bold : font;
         BOX(page, LVAL_X, yt, LVAL_W, ROW_H);
         BOX(page, RVAL_X, yt, RVAL_W, ROW_H);
@@ -438,22 +482,45 @@ export class RideGenerator {
         yt -= ROW_H;
       });
 
-      // ── FORMA DE PAGO ────────────────────────────────────────────────────────
-      yt -= 2;
-      BOX(page, TOT_X, yt, TOT_W, ROW_H);
-      TC(page, 'FORMA DE PAGO', TOT_X, yt - ROW_H + 4, TOT_W, 7, bold);
-      yt -= ROW_H;
-
-      const pagos = arr(info.pagos?.pago);
-      const FP_MAP: Record<string,string> = { '01':'EFECTIVO','16':'DEBITO','19':'CREDITO','20':'OTROS' };
-
-      pagos.forEach(p => {
-        BOX(page, LVAL_X, yt, LVAL_W, ROW_H);
-        BOX(page, RVAL_X, yt, RVAL_W, ROW_H);
-        T(page, FP_MAP[p.formaPago] ?? 'S. FINANCIERO', LVAL_X + 3, yt - ROW_H + 4, 6, font, LVAL_W - 5);
-        TR(page, fmt(p.total), RVAL_X + 2, yt - ROW_H + 4, RVAL_W - 3, 6.5, font);
+      // ── FORMA DE PAGO (la nota de crédito no tiene pagos) ────────────────────
+      if (!modificacion) {
+        yt -= 2;
+        BOX(page, TOT_X, yt, TOT_W, ROW_H);
+        TC(page, 'FORMA DE PAGO', TOT_X, yt - ROW_H + 4, TOT_W, 7, bold);
         yt -= ROW_H;
-      });
+
+        const pagos = arr(info.pagos?.pago);
+        const FP_MAP: Record<string, string> = {
+          '01': 'EFECTIVO',
+          '16': 'DEBITO',
+          '19': 'CREDITO',
+          '20': 'OTROS',
+        };
+
+        pagos.forEach((p) => {
+          BOX(page, LVAL_X, yt, LVAL_W, ROW_H);
+          BOX(page, RVAL_X, yt, RVAL_W, ROW_H);
+          T(
+            page,
+            FP_MAP[p.formaPago] ?? 'S. FINANCIERO',
+            LVAL_X + 3,
+            yt - ROW_H + 4,
+            6,
+            font,
+            LVAL_W - 5,
+          );
+          TR(
+            page,
+            fmt(p.total),
+            RVAL_X + 2,
+            yt - ROW_H + 4,
+            RVAL_W - 3,
+            6.5,
+            font,
+          );
+          yt -= ROW_H;
+        });
+      }
 
       // ── INFO ADICIONAL ──────────────────────────────────────────────────────
       let ya = Y;

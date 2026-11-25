@@ -302,6 +302,54 @@ export class SriRepositoryService {
     return result.rows as ComprobanteRecord[];
   }
 
+  /**
+   * Factura (tipo 01) de un emisor por su número 001-001-000000123, en el
+   * ambiente indicado. Si hay varias filas con ese número, prefiere la
+   * autorizada y luego la más reciente.
+   */
+  async findFacturaPorNumero(
+    emisorId: string,
+    ambiente: string,
+    numeroDocumento: string,
+  ): Promise<ComprobanteRecord | null> {
+    const [establecimiento, puntoEmision, secuencial] =
+      numeroDocumento.split('-');
+    if (!establecimiento || !puntoEmision || !secuencial) {
+      return null;
+    }
+    return this.db.queryOne<ComprobanteRecord>(
+      `SELECT c.* FROM comprobantes c
+       JOIN puntos_emision pe ON pe.id = c.punto_emision_id
+       JOIN establecimientos e ON e.id = pe.establecimiento_id
+       WHERE c.emisor_id = $1 AND c.tipo_comprobante = '01' AND c.ambiente = $2
+         AND e.codigo = $3 AND pe.codigo = $4 AND c.secuencial = $5
+       ORDER BY (c.estado = 'AUTORIZADO') DESC, c.created_at DESC
+       LIMIT 1`,
+      [emisorId, ambiente, establecimiento, puntoEmision, secuencial],
+    );
+  }
+
+  /**
+   * Suma del importe de las notas de crédito (tipo 04) de un emisor que
+   * modifican el documento indicado y que están autorizadas o todavía pueden
+   * autorizarse (se excluyen las rechazadas, devueltas y anuladas).
+   */
+  async sumarNotasCreditoPorDocModificado(
+    emisorId: string,
+    ambiente: string,
+    numeroDocumento: string,
+  ): Promise<string> {
+    const row = await this.db.queryOne<{ total: string }>(
+      `SELECT COALESCE(SUM(importe_total), 0)::text AS total FROM comprobantes
+       WHERE emisor_id = $1 AND tipo_comprobante = '04' AND ambiente = $2
+         AND doc_modificado_numero = $3
+         AND COALESCE(estado, 'PENDIENTE') NOT IN
+           ('DEVUELTA', 'RECHAZADO', 'NO AUTORIZADO', 'ANULADO', 'ERROR')`,
+      [emisorId, ambiente, numeroDocumento],
+    );
+    return row?.total ?? '0';
+  }
+
   async findComprobanteByClaveAcceso(
     claveAcceso: string,
   ): Promise<ComprobanteRecord | null> {
