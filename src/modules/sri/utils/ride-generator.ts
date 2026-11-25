@@ -227,6 +227,17 @@ export class RideGenerator {
       T(page, 'Obligado a llevar contabilidad:', M + 8, yl, 7, bold, 120);
       T(page, info.obligadoContabilidad ?? 'NO', M + 130, yl, 7, font, 20);
 
+      // Leyenda RIMPE obligatoria en el RIDE: se imprime tal cual viene en el
+      // XML (Emprendedor o Negocio Popular), así nunca difiere del comprobante.
+      if (it.contribuyenteRimpe) {
+        yl -= 13;
+        T(page, s(it.contribuyenteRimpe), M + 8, yl, 7, bold, LW - 16);
+      }
+      if (it.agenteRetencion) {
+        yl -= 11;
+        T(page, `Agente de Retención Resolución No. ${s(it.agenteRetencion)}`, M + 8, yl, 7, bold, LW - 16);
+      }
+
 
       // ── RIGHT BLOCK: SRI Info ──────────────────────────────────────────────
       BOX(page, M + LW + 6, Y, RW, H);

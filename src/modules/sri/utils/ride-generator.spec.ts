@@ -171,13 +171,12 @@ describe('RideGenerator', () => {
     expect(textos).not.toContain('FORMA DE PAGO');
   });
 
-  it('sigue generando el RIDE de una factura', async () => {
-    const xml = builder.buildFactura({
-      infoTributaria: infoTributaria(
-        CLAVE_FAC,
-        TipoComprobante.FACTURA,
-        '000000123',
-      ),
+  const facturaXml = (extra: Partial<InfoTributaria> = {}) =>
+    builder.buildFactura({
+      infoTributaria: {
+        ...infoTributaria(CLAVE_FAC, TipoComprobante.FACTURA, '000000123'),
+        ...extra,
+      },
       infoFactura: {
         fechaEmision: '20/11/2026',
         obligadoContabilidad: 'NO',
@@ -226,6 +225,8 @@ describe('RideGenerator', () => {
       ],
     });
 
+  it('sigue generando el RIDE de una factura', async () => {
+    const xml = facturaXml();
     const pdf = await RideGenerator.generateFromXml(autorizado(xml, CLAVE_FAC));
 
     expect(pdf.subarray(0, 5).toString()).toBe('%PDF-');
@@ -241,5 +242,25 @@ describe('RideGenerator', () => {
       ]),
     );
     expect(textos).not.toContain('Comprobante que se modifica:');
+  });
+
+  it.each([
+    'CONTRIBUYENTE RÉGIMEN RIMPE',
+    'CONTRIBUYENTE NEGOCIO POPULAR - RÉGIMEN RIMPE',
+  ] as const)('imprime la leyenda RIMPE del XML: %s', async (leyenda) => {
+    const xml = facturaXml({ contribuyenteRimpe: leyenda });
+    await RideGenerator.generateFromXml(autorizado(xml, CLAVE_FAC));
+    expect(textos).toContain(leyenda);
+  });
+
+  it('no imprime leyenda RIMPE si el emisor no es RIMPE', async () => {
+    await RideGenerator.generateFromXml(autorizado(facturaXml(), CLAVE_FAC));
+    expect(textos.some((t) => t.includes('RIMPE'))).toBe(false);
+  });
+
+  it('imprime agente de retención cuando viene en el XML', async () => {
+    const xml = facturaXml({ agenteRetencion: '1' });
+    await RideGenerator.generateFromXml(autorizado(xml, CLAVE_FAC));
+    expect(textos).toContain('Agente de Retención Resolución No. 1');
   });
 });
