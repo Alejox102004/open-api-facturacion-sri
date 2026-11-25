@@ -19,6 +19,20 @@ import {
   SriOperationResult,
 } from '../interfaces';
 import { TipoComprobante, Ambiente, TipoEmision } from '../constants';
+import {
+  buscarComprobantePrevio,
+  TextosComprobantePrevio,
+} from '../utils/comprobante-previo';
+
+const TEXTOS_FACTURA_PREVIA: TextosComprobantePrevio = {
+  identificador: 'FACTURA_EXISTENTE',
+  etiqueta: 'Factura',
+  mensajeAutorizado:
+    'Esta venta ya tiene una factura autorizada; no se emitió otra.',
+  mensajePendiente: (estadoLocal) =>
+    `Esta venta ya tiene una factura en proceso (${estadoLocal}); no se emitió otra. ` +
+    'Consulte o reenvíe esta misma clave de acceso.',
+};
 
 @Injectable()
 export class FacturaService {
@@ -750,134 +764,17 @@ export class FacturaService {
     emisorId: string,
     referenciaExterna: string,
   ): Promise<FacturaResponseDto | null> {
-    const previas = await this.repository.findComprobantesByReferenciaExterna(
+    return buscarComprobantePrevio(
+      {
+        repository: this.repository,
+        sriSoapClient: this.sriSoapClient,
+        logger: this.logger,
+      },
       emisorId,
       TipoComprobante.FACTURA,
       referenciaExterna,
+      TEXTOS_FACTURA_PREVIA,
     );
-
-    for (const previa of previas) {
-      const claveAcceso = previa.clave_acceso as string;
-      if (!claveAcceso) {
-        continue;
-      }
-
-      if (previa.estado === 'AUTORIZADO') {
-        this.logger.warn(
-          `Factura para referencia ${referenciaExterna} ya autorizada (${claveAcceso}); no se emite otra`,
-        );
-        return {
-          success: true,
-          claveAcceso,
-          estado: 'AUTORIZADO',
-          fechaAutorizacion: previa.fecha_autorizacion as any,
-          numeroAutorizacion:
-            (previa.numero_autorizacion as string) || claveAcceso,
-          mensajes: [
-            {
-              identificador: 'FACTURA_EXISTENTE',
-              mensaje:
-                'Esta venta ya tiene una factura autorizada; no se emitió otra.',
-              tipo: 'INFORMATIVO',
-            },
-          ],
-        };
-      }
-
-      let estadoSri: string | null = null;
-      let fechaAutorizacion: string | undefined;
-      let numeroAutorizacion: string | undefined;
-      try {
-        const respuesta =
-          await this.sriSoapClient.autorizarComprobante(claveAcceso);
-        const autorizaciones = respuesta?.autorizaciones?.autorizacion;
-        const auth = Array.isArray(autorizaciones)
-          ? autorizaciones[0]
-          : autorizaciones;
-        if (auth) {
-          estadoSri = auth.estado || 'DESCONOCIDO';
-          fechaAutorizacion = auth.fechaAutorizacion;
-          numeroAutorizacion = auth.numeroAutorizacion;
-        }
-      } catch (error) {
-        // Sin respuesta del SRI no se puede descartar que la anterior se
-        // autorice: no emitir otra.
-        this.logger.warn(
-          `No se pudo consultar ${claveAcceso} en el SRI: ${(error as Error).message}`,
-        );
-        return this.respuestaPendiente(claveAcceso, previa.estado as string);
-      }
-
-      if (estadoSri === 'AUTORIZADO') {
-        await this.repository.updateComprobante(previa.id as string, {
-          estado: 'AUTORIZADO',
-          estado_sri: 'AUTORIZADO',
-          fecha_autorizacion: fechaAutorizacion,
-          numero_autorizacion: numeroAutorizacion || claveAcceso,
-        });
-        this.logger.warn(
-          `Factura previa ${claveAcceso} estaba AUTORIZADA en el SRI; no se emite otra`,
-        );
-        return {
-          success: true,
-          claveAcceso,
-          estado: 'AUTORIZADO',
-          fechaAutorizacion,
-          numeroAutorizacion: numeroAutorizacion || claveAcceso,
-          mensajes: [
-            {
-              identificador: 'FACTURA_EXISTENTE',
-              mensaje:
-                'Esta venta ya tiene una factura autorizada; no se emitió otra.',
-              tipo: 'INFORMATIVO',
-            },
-          ],
-        };
-      }
-
-      if (estadoSri && estadoSri !== 'NO AUTORIZADO') {
-        // EN PROCESO u otro estado no definitivo
-        return this.respuestaPendiente(claveAcceso, 'EN_PROCESO');
-      }
-
-      if (estadoSri === null) {
-        // El SRI no la tiene registrada. Si la recepción no la rechazó, puede
-        // seguir en camino: se reenvía esa misma (mismo secuencial y clave).
-        const rechazada = [
-          'DEVUELTA',
-          'RECHAZADO',
-          'NO AUTORIZADO',
-          'ERROR',
-        ].includes(previa.estado as string);
-        if (!rechazada) {
-          return this.respuestaPendiente(claveAcceso, previa.estado as string);
-        }
-      }
-      // NO AUTORIZADO o devuelta y no registrada en el SRI: esa no cuenta,
-      // revisar la siguiente.
-    }
-
-    return null;
-  }
-
-  private respuestaPendiente(
-    claveAcceso: string,
-    estadoLocal: string,
-  ): FacturaResponseDto {
-    return {
-      success: false,
-      claveAcceso,
-      estado: 'PENDIENTE',
-      mensajes: [
-        {
-          identificador: 'FACTURA_EXISTENTE_PENDIENTE',
-          mensaje:
-            `Esta venta ya tiene una factura en proceso (${estadoLocal}); no se emitió otra. ` +
-            'Consulte o reenvíe esta misma clave de acceso.',
-          tipo: 'ADVERTENCIA',
-        },
-      ],
-    };
   }
 
   mapResultToResponse(result: SriOperationResult): FacturaResponseDto {

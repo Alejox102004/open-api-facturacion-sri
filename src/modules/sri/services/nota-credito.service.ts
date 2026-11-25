@@ -18,6 +18,20 @@ import {
   SriOperationResult,
 } from '../interfaces';
 import { TipoComprobante, Ambiente, TipoEmision } from '../constants';
+import {
+  buscarComprobantePrevio,
+  TextosComprobantePrevio,
+} from '../utils/comprobante-previo';
+
+const TEXTOS_NOTA_CREDITO_PREVIA: TextosComprobantePrevio = {
+  identificador: 'NOTA_CREDITO_EXISTENTE',
+  etiqueta: 'Nota de crédito',
+  mensajeAutorizado:
+    'Esta devolución ya tiene una nota de crédito autorizada; no se emitió otra.',
+  mensajePendiente: (estadoLocal) =>
+    `Esta devolución ya tiene una nota de crédito en proceso (${estadoLocal}); no se emitió otra. ` +
+    'Consulte o reenvíe esta misma clave de acceso.',
+};
 
 @Injectable()
 export class NotaCreditoService {
@@ -36,6 +50,9 @@ export class NotaCreditoService {
 
   /**
    * Emite una Nota de Crédito electrónica
+   * Mismo patrón que la factura: no emite dos notas para la misma referencia,
+   * reserva el secuencial en una transacción corta y, si el SRI no responde,
+   * guarda la nota como PENDIENTE y devuelve su clave de acceso.
    */
   async emitirNotaCredito(
     dto: CreateNotaCreditoDto,
@@ -74,7 +91,47 @@ export class NotaCreditoService {
           )
         : null;
 
-      // Handle secuencial - auto-generate if not provided
+      // ─── FASE 0: No emitir dos notas de crédito para la misma devolución ───
+      // Si el sistema cliente reintenta, una nota anterior con la misma
+      // referencia puede estar autorizada o en proceso en el SRI. Emitir otra
+      // con un secuencial nuevo deja dos notas autorizadas por lo mismo.
+      if (dto.referenciaExterna && emisor) {
+        const previa = await this.buscarNotaCreditoPrevia(
+          emisor.id,
+          dto.referenciaExterna,
+        );
+        if (previa) {
+          return previa;
+        }
+      }
+
+      // La suma de notas de crédito no puede superar el total de la factura
+      if (emisor) {
+        const { valorModificacion } = this.calculateTotalesNotaCredito(
+          this.buildDetallesNotaCredito(dto.detalles),
+        );
+        await this.validarTotalContraFactura(
+          dto,
+          emisor.id,
+          ambiente,
+          valorModificacion,
+        );
+      }
+
+      // Verificar certificado antes de reservar el secuencial, para no
+      // consumir un número que nunca se va a usar.
+      if (
+        !emisor ||
+        !emisor.certificado_nombre ||
+        !emisor.certificado_password_encrypted
+      ) {
+        throw new BadRequestException(
+          `El emisor con RUC ${dto.emisor.ruc} no tiene certificado digital configurado. ` +
+            'Use el endpoint POST /certificates/upload-cert con el RUC para vincular un certificado P12.',
+        );
+      }
+
+      // ─── FASE 1: Transacción corta — Solo reservar secuencial ───
       let secuencial: string;
       if (dto.secuencial) {
         secuencial = dto.secuencial.padStart(9, '0');
@@ -82,17 +139,22 @@ export class NotaCreditoService {
       } else {
         if (!puntoEmisionInfo) {
           throw new BadRequestException(
-            'Para auto-generar secuencial NC, el emisor debe estar registrado en la base de datos',
+            `No se puede generar secuencial automático: punto de emisión ${dto.emisor.establecimiento}-${dto.emisor.puntoEmision} no encontrado para emisor ${dto.emisor.ruc}`,
           );
         }
-        const nextSecuencial = await this.repository.getNextSecuencial(
-          puntoEmisionInfo.punto_emision_id,
-          TipoComprobante.NOTA_CREDITO,
+        secuencial = await this.repository.executeInTransaction(
+          async (client) => {
+            return this.repository.getNextSecuencial(
+              puntoEmisionInfo.punto_emision_id,
+              TipoComprobante.NOTA_CREDITO,
+              client,
+            );
+          },
         );
-        secuencial = nextSecuencial;
         this.logger.log(`Secuencial NC auto-generado: ${secuencial}`);
       }
 
+      // ─── FASE 2: Fuera de transacción — Firma + Envío al SRI ───
       const [day, month, year] = dto.fechaEmision.split('/');
       const fechaEmision = new Date(
         parseInt(year),
@@ -123,14 +185,6 @@ export class NotaCreditoService {
       const xml = this.xmlBuilderService.buildNotaCredito(notaCredito);
       this.logger.log('XML de nota de crédito generado');
 
-      // Verify emisor has certificate in database
-      if (!emisor || !emisor.certificado_p12) {
-        throw new BadRequestException(
-          `El emisor ${dto.emisor.ruc} no tiene certificado P12 configurado. ` +
-            `Use el endpoint /certificates/upload-cert para subir el certificado.`,
-        );
-      }
-
       this.logger.log(
         `Firmando NC con certificado del emisor: ${emisor.certificado_nombre}`,
       );
@@ -140,13 +194,61 @@ export class NotaCreditoService {
       );
       this.logger.log('XML de nota de crédito firmado con XAdES-BES');
 
-      const resultado = await this.sriSoapClient.enviarYAutorizar(
-        xmlFirmado,
-        claveAcceso,
-      );
+      // Enviar y autorizar en SRI (sin conexión de DB abierta)
+      let resultado: SriOperationResult;
+      try {
+        resultado = await this.sriSoapClient.enviarYAutorizar(
+          xmlFirmado,
+          claveAcceso,
+        );
+      } catch (error) {
+        // El SRI no respondió — guardar como PENDIENTE para reintento posterior
+        if (puntoEmisionInfo) {
+          await this.persistirNotaCredito(
+            dto,
+            notaCredito,
+            emisor.id,
+            puntoEmisionInfo.punto_emision_id,
+            claveAcceso,
+            secuencial,
+            ambiente,
+            tipoEmision,
+            xml,
+            xmlFirmado,
+            {
+              success: false,
+              claveAcceso,
+              estado: 'PENDIENTE',
+              mensajes: [
+                {
+                  identificador: 'SRI_TIMEOUT',
+                  mensaje: (error as Error).message,
+                  tipo: 'ERROR',
+                },
+              ],
+            },
+          );
+          // La nota quedó guardada: devolver su clave para que el cliente
+          // consulte o reenvíe ESTA misma nota, en vez de recibir un error y
+          // emitir otra con un secuencial nuevo.
+          return {
+            success: false,
+            claveAcceso,
+            estado: 'PENDIENTE',
+            mensajes: [
+              {
+                identificador: 'SRI_TIMEOUT',
+                mensaje: `El SRI no respondió: ${(error as Error).message}. Consulte o reenvíe esta misma clave de acceso.`,
+                tipo: 'ADVERTENCIA',
+              },
+            ],
+          };
+        }
+        throw error;
+      }
 
-      // Persistir en base de datos
-      if (emisor && puntoEmisionInfo) {
+      // ─── FASE 3: Persistir resultado ───
+      if (puntoEmisionInfo) {
         await this.persistirNotaCredito(
           dto,
           notaCredito,
@@ -162,7 +264,7 @@ export class NotaCreditoService {
         );
       } else {
         this.logger.warn(
-          'Emisor no encontrado en BD, nota de crédito no persistida',
+          'Punto de emisión no encontrado en BD, nota de crédito no persistida',
         );
       }
 
@@ -172,6 +274,78 @@ export class NotaCreditoService {
         `Error al emitir nota de crédito: ${(error as Error).message}`,
       );
       throw error;
+    }
+  }
+
+  /**
+   * Busca una nota de crédito anterior del emisor con la misma referencia
+   * externa que esté autorizada o que todavía pueda autorizarse.
+   */
+  private async buscarNotaCreditoPrevia(
+    emisorId: string,
+    referenciaExterna: string,
+  ): Promise<NotaCreditoResponseDto | null> {
+    return buscarComprobantePrevio(
+      {
+        repository: this.repository,
+        sriSoapClient: this.sriSoapClient,
+        logger: this.logger,
+      },
+      emisorId,
+      TipoComprobante.NOTA_CREDITO,
+      referenciaExterna,
+      TEXTOS_NOTA_CREDITO_PREVIA,
+    );
+  }
+
+  /**
+   * Si la factura original está en la base, verifica que esta nota de crédito
+   * más las ya emitidas (autorizadas o pendientes) para esa factura no superen
+   * su importe total. Si la factura no está registrada, no se valida.
+   */
+  private async validarTotalContraFactura(
+    dto: CreateNotaCreditoDto,
+    emisorId: string,
+    ambiente: string,
+    valorModificacion: number,
+  ): Promise<void> {
+    if (dto.codDocModificado !== (TipoComprobante.FACTURA as string)) {
+      return;
+    }
+
+    const factura = await this.repository.findFacturaPorNumero(
+      emisorId,
+      ambiente,
+      dto.numDocModificado,
+    );
+    if (
+      !factura ||
+      factura.importe_total === undefined ||
+      factura.importe_total === null
+    ) {
+      this.logger.log(
+        `Factura ${dto.numDocModificado} no registrada localmente; no se valida el total de la nota de crédito`,
+      );
+      return;
+    }
+
+    const totalFactura = new Decimal(factura.importe_total);
+    const yaEmitido = new Decimal(
+      await this.repository.sumarNotasCreditoPorDocModificado(
+        emisorId,
+        ambiente,
+        dto.numDocModificado,
+      ),
+    );
+    const esta = new Decimal(valorModificacion);
+
+    if (yaEmitido.plus(esta).greaterThan(totalFactura)) {
+      const disponible = Decimal.max(totalFactura.minus(yaEmitido), 0);
+      throw new BadRequestException(
+        `La nota de crédito por $${esta.toFixed(2)} supera el saldo de la factura ${dto.numDocModificado}: ` +
+          `total de la factura $${totalFactura.toFixed(2)}, notas de crédito ya emitidas $${yaEmitido.toFixed(2)}, ` +
+          `saldo disponible $${disponible.toFixed(2)}.`,
+      );
     }
   }
 
@@ -204,6 +378,7 @@ export class NotaCreditoService {
             secuencial,
             clave_acceso: claveAcceso,
             fecha_emision: dto.fechaEmision.split('/').reverse().join('-'),
+            id_referencia_externa: dto.referenciaExterna || undefined,
             estado: resultado.success ? 'AUTORIZADO' : resultado.estado,
             estado_sri: resultado.estado,
             fecha_autorizacion: resultado.fechaAutorizacion,
